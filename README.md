@@ -1,2 +1,2 @@
 # euclid
-Rust-based geometry engine
+A rust-based geometry engine
