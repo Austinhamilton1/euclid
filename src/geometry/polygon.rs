@@ -438,6 +438,8 @@ impl Convex for ConvexPolygon {
     }
 }
 
+/* Unit Tests */
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,7 +452,7 @@ mod tests {
         let sp = SimplePolygon::from_points(&points);
         let cp = sp.convex_hull();
 
-        let mut iter = cp.vertices.iter();
+        let mut iter = cp.vertices();
 
         let p1 = iter.next().unwrap();
         let p2 = iter.next().unwrap();
