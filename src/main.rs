@@ -1,7 +1,7 @@
 mod geometry;
 
-use crate::geometry::primitives;
-use crate::geometry::polygon;
+use crate::geometry::primitives::*;
+use crate::geometry::polygon::*;
 
 fn main() {
     println!("Hello, world!");

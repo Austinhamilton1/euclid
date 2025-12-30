@@ -1,8 +1,10 @@
+use std::fmt::DebugMap;
+
 const EPS: f64 = 1e-9;
 
 /*
-    * Point with an x and y position.
-    */
+ * Point with an x and y position.
+ */
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
     pub x: f64,
@@ -11,24 +13,35 @@ pub struct Point {
 
 impl Point {
     /*
-        * Create a new Point.
-        * Arguments:
-        *     x: f64
-        *     y: f64
-        */
+     * Create a new Point.
+     * Arguments:
+     *     x: f64
+     *     y: f64
+     */
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
 
     /*
-        * Dot product for Points.
-        * Arguments:
-        *     other: Point
-        * Returns:
-        *     f64 - Dot product of two points.
-        */
+     * Dot product for Points.
+     * Arguments:
+     *     other: Point
+     * Returns:
+     *     f64 - Dot product of two points.
+     */
     pub fn dot(self, other: Point) -> f64 {
         self.x*other.x + self.y*other.y
+    }
+
+    /*
+     * Cross product for Points.
+     * Arguments:
+     *     other: Point
+     * Returns:
+     *     f64 - Cross product of two points.
+     */
+    pub fn cross(self, other: Point) -> f64 {
+        self.x*other.y - self.y*other.x
     }
 }
 
@@ -36,8 +49,8 @@ impl std::ops::Add<Point> for Point {
     type Output = Point;
 
     /*
-        * Add two points together.
-        */
+     * Add two points together.
+     */
     fn add(self, rhs: Point) -> Self::Output {
         Self {
             x: self.x + rhs.x,
@@ -50,8 +63,8 @@ impl std::ops::Sub<Point> for Point {
     type Output = Point;
 
     /*
-        * Subtract a point from another point.
-        */
+     * Subtract a point from another point.
+     */
     fn sub(self, rhs: Point) -> Self::Output {
         Self {
             x: self.x - rhs.x,
@@ -64,8 +77,8 @@ impl std::ops::Mul<Point> for f64 {
     type Output = Point;
 
     /* 
-        * Scalar multiplication for a Point.
-        */
+     * Scalar multiplication for a Point.
+     */
     fn mul(self, rhs: Point) -> Self::Output {
         Point {
             x: self * rhs.x,
@@ -75,29 +88,50 @@ impl std::ops::Mul<Point> for f64 {
 }
 
 /*
-    * Line segment with a start and end Point.
-    */
+ * Line segment with a start and end Point.
+ */
 #[derive(Debug, Clone, Copy)]
 pub struct Segment {
-    a: Point,
-    b: Point,
+    pub a: Point,
+    pub b: Point,
 }
 
 impl Segment {
     /*
-        * Create a new Segment.
-        * Arguments:
-        *     a: Point
-        *     b: Point
-        */
+     * Create a new Segment.
+     * Arguments:
+     *     a: Point
+     *     b: Point
+     */
     pub fn new(a: Point, b: Point) -> Self {
         Self { a, b }
     }
 }
 
 /*
-    * Axis-Aligned Bounding Box for Points.
-    */
+ * Ray with a start Point and a direction.
+ */
+#[derive(Debug, Clone, Copy)]
+pub struct Ray {
+    p: Point,
+    d: Point,
+}
+
+impl Ray {
+    /*
+     * Create a new Ray.
+     * Arguments:
+     *     p: Point
+     *     d: Point 
+     */
+    pub fn new(p: Point, d: Point) -> Self {
+        Self { p, d }
+    }
+}
+
+/*
+ * Axis-Aligned Bounding Box for Points.
+ */
 #[derive(Debug, Clone, Copy)]
     pub struct AABB {
     min: Point,
@@ -106,21 +140,21 @@ impl Segment {
 
 impl AABB {
     /*
-        * Create a new Axis-Aligned Bounding box from two points.
-        * Arguments:
-        *     min: Point
-        *     max: Point
-        */
+     * Create a new Axis-Aligned Bounding box from two points.
+     * Arguments:
+     *     min: Point
+     *     max: Point
+     */
     pub fn new(min: Point, max: Point) -> Self {
         Self { min, max }
     }
 
     /*
-        * Create a AABB around a line segment.
-        * Arguments:
-        *     a: Point
-        *     b: Point
-        */
+     * Create a AABB around a line segment.
+     * Arguments:
+     *     a: Point
+     *     b: Point
+     */
     pub fn from_line(a: &Point, b: &Point) -> Self {
         let min_x = if a.x < b.x { a.x } else { b.x };
         let min_y = if a.y < b.y { a.y } else { b.y };
@@ -134,10 +168,10 @@ impl AABB {
     }
 
     /*
-        * Create a new Axis-Aligned Bounding box from a collection of points.
-        * Arguments:
-        *     points: &[Point]
-        */
+     * Create a new Axis-Aligned Bounding box from a collection of points.
+     * Arguments:
+     *     points: &[Point]
+     */
     pub fn from_points(points: &[Point]) -> Self {
         // Ensure a non-empty points list
         assert!(!points.is_empty());
@@ -173,12 +207,12 @@ impl AABB {
     }
 
     /*
-        * Determine if a point is within the AABB.
-        * Arguments:
-        *     point: Point - Test this point.
-        * Returns:
-        *     bool - True if the point is in the AABB, false otherwise.
-        */
+     * Determine if a point is within the AABB.
+     * Arguments:
+     *     point: Point - Test this point.
+     * Returns:
+     *     bool - True if the point is in the AABB, false otherwise.
+     */
     pub fn contains(&self, point: Point) -> bool {
         point.x <= self.max.x 
             && point.x >= self.min.x 
@@ -187,13 +221,13 @@ impl AABB {
     }
 
     /*
-        * Determine if this AABB intersects with another type
-        * that also has an AABB.
-        * Arguments:
-        *     obj: &impl HasAabb - An object that has an AABB.
-        * Returns:
-        *     bool - True if the object intersects with this AABB, false otherwise.
-        */
+     * Determine if this AABB intersects with another type
+     * that also has an AABB.
+     * Arguments:
+     *     obj: &impl HasAabb - An object that has an AABB.
+     * Returns:
+     *     bool - True if the object intersects with this AABB, false otherwise.
+     */
     pub fn intersects(&self, obj: &impl HasAabb) -> bool {
         // Get the AABB of the other object
         let aabb = obj.aabb();
@@ -206,12 +240,12 @@ impl AABB {
     }
 
     /*
-        * Merge two AABB's.
-        * Arguments:
-        *     other: &AABB - The other AABB to merge with this one.
-        * Returns:
-        *     AABB - A new AABB that is the union of these two AABB's.
-        */
+     * Merge two AABB's.
+     * Arguments:
+     *     other: &AABB - The other AABB to merge with this one.
+     * Returns:
+     *     AABB - A new AABB that is the union of these two AABB's.
+     */
     pub fn union(&self, other: &AABB) -> Self {
         let min_x = if self.min.x < other.min.x { self.min.x } else { other.min.x };
         let min_y = if self.min.y < other.min.y { self.min.y } else { other.min.y };
@@ -231,8 +265,8 @@ pub trait HasAabb {
 
 impl HasAabb for Point {
     /*
-        * Get the AABB of a point (trivial - done for generalization).
-        */
+     * Get the AABB of a point (trivial - done for generalization).
+     */
     fn aabb(&self) -> AABB {
         AABB::new(*self, *self)            
     }
@@ -240,8 +274,8 @@ impl HasAabb for Point {
 
 impl HasAabb for Segment {
     /*
-        * Get the AABB of a line segment.
-        */
+     * Get the AABB of a line segment.
+     */
     fn aabb(&self) -> AABB {
         AABB::from_line(&self.a, &self.b)
     }
@@ -249,8 +283,8 @@ impl HasAabb for Segment {
 
 impl HasAabb for AABB {
     /*
-        * Get the AABB of an AABB (trivial - done for generalization).
-        */
+     * Get the AABB of an AABB (trivial - done for generalization).
+     */
     fn aabb(&self) -> AABB {
         *self
     }
@@ -295,16 +329,67 @@ impl Intersects<Segment> for Segment {
     }
 }
 
+impl Intersects<Segment> for Ray {
+    /*
+     * Check if a Ray intersects a Segment.
+     * Arguments:
+     *     other: &Segment
+     * Returns:
+     *     bool - True if the two intersect, false otherwise.
+     */
+    fn intersects(&self, other: &Segment) -> bool {
+        // Parameterize the equations
+        let v = other.b - other.a;
+        let w = self.p - other.a;
+
+        // Calculate the cross product
+        let denom = v.cross(self.d);
+
+        // Parallel case
+        if denom.abs() < EPS {
+            // Check collinearity
+            if w.cross(v).abs() > EPS {
+                return false;
+            }
+
+            // Project endpoints onto ray direction
+            let t0 = (other.a - self.p).dot(self.d);
+            let t1 = (other.b - self.p).dot(self.d);
+
+            return t0 >= 0.0 || t1 >= 0.0;
+        }
+
+        // Solve for parameters
+        let u = w.cross(self.d) / denom;
+        let t = w.cross(v) / denom;
+
+        u >= 0.0 && u <= 1.0 && t >= 0.0
+    }
+}
+
+impl Intersects<Ray> for Segment {
+    /*
+     * Check if a Segment intersects a Ray.
+     * Arguments:
+     *     other: &Ray
+     * Returns:
+     *     bool - True if the two intersect, false otherwise.
+     */
+    fn intersects(&self, other: &Ray) -> bool {
+        other.intersects(self)
+    }
+}
+
 pub trait Distance<Rhs = Self> {
     fn distance(&self, other: &Rhs) -> f64;
 }
 
 impl Distance<Point> for Point {
     /*
-        * Distance between two points.
-        * Arguments:
-        *     other: &Point
-        */
+     * Distance between two points.
+     * Arguments:
+     *     other: &Point
+     */
     fn distance(&self, other: &Point) -> f64 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
@@ -314,10 +399,10 @@ impl Distance<Point> for Point {
 
 impl Distance<Segment> for Point {
     /*
-        * Distance between a point and a line segment.
-        * Arguments:
-        *     other: &Segment
-        */
+     * Distance between a point and a line segment.
+     * Arguments:
+     *     other: &Segment
+     */
     fn distance(&self, other: &Segment) -> f64 {            
         // Get the line segment's direction
         let v = other.b - other.a;
@@ -350,10 +435,10 @@ impl Distance<Segment> for Point {
 
 impl Distance<Point> for Segment {
     /*
-        * Distance between a line segment and a point.
-        * Arguments:
-        *     other: &Point
-        */
+     * Distance between a line segment and a point.
+     * Arguments:
+     *     other: &Point
+     */
     fn distance(&self, other: &Point) -> f64 {
         other.distance(self)
     }
@@ -361,10 +446,10 @@ impl Distance<Point> for Segment {
 
 impl Distance<Segment> for Segment {
     /*
-        * Distance between two line segments.
-        * Arguments:
-        *     other: &Segment
-        */
+     * Distance between two line segments.
+     * Arguments:
+     *     other: &Segment
+     */
     fn distance(&self, other: &Segment) -> f64 {
         // Check if the line segments are intersecting
         if self.intersects(other) { return 0.0; }
@@ -378,16 +463,16 @@ impl Distance<Segment> for Segment {
 }
 
 /* 
-    * Get the orientation of three points.
-    * Arguments:
-    *     p: Point
-    *     q: Point
-    *     r: Point
-    * Returns:
-    *     0 - Collinear
-    *     1 - Clockwise
-    *     2 - Counterclockwise
-    */
+ * Get the orientation of three points.
+ * Arguments:
+ *     p: Point
+ *     q: Point
+ *     r: Point
+ * Returns:
+ *     0 - Collinear
+ *     1 - Clockwise
+ *     2 - Counterclockwise
+ */
 pub fn orientation(p: Point, q: Point, r: Point) -> i32 {
     let val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
     if val.abs() < EPS { 0 }
@@ -396,14 +481,14 @@ pub fn orientation(p: Point, q: Point, r: Point) -> i32 {
 }
 
 /*
-    * Determine if a point is on a line segment.
-    * Arguments:
-    *     p: Point
-    *     q: Point
-    *     r: Point
-    * Returns:
-    *     bool - True if q is on p -> r, false otherwise.
-    */
+ * Determine if a point is on a line segment.
+ * Arguments:
+ *     p: Point
+ *     q: Point
+ *     r: Point
+ * Returns:
+ *     bool - True if q is on p -> r, false otherwise.
+ */
 fn on_segment(p: Point, q: Point, r: Point) -> bool {
     q.x >= p.x.min(r.x) && q.x <= p.x.max(r.x) &&
     q.y >= p.y.min(r.y) && q.y <= p.y.max(r.y)
@@ -414,3 +499,170 @@ pub trait Geometry: HasAabb {}
 impl Geometry for Point {}
 impl Geometry for Segment {}
 impl Geometry for AABB {}
+
+
+/* Unit Tests */
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ops_test() {
+        let a = Point::new(5.0, 6.0);
+        let b = Point::new(1.0, -1.0);
+
+        let add = a + b;
+        let sub = a - b;
+        let mul = 3.0 * b;
+
+        assert!((6.0 - add.x).abs() < EPS && (5.0 - add.y).abs() < EPS);
+        assert!((4.0 - sub.x).abs() < EPS && (7.0 - sub.y).abs() < EPS);
+        assert!((3.0 - mul.x).abs() < EPS && (-3.0 - mul.y).abs() < EPS);
+    }
+
+    #[test]
+    fn dot_test() {
+        let a = Point::new(5.0, 6.0);
+        let b = Point::new(-1.0, 1.0);
+        let c = a.dot(b);
+        assert!((1.0 - c).abs() < EPS);
+    }
+
+    #[test]
+    fn cross_test() {
+        let a = Point::new(1.0, 1.0);
+        let b = Point::new(-1.0, -1.0);
+        let c = a.cross(b);
+        assert!(c.abs() < EPS);
+    }
+
+    #[test]
+    fn ray_segment_intersect_test() {
+        let segment = Segment::new(Point::new(10.0, 0.0), Point::new(0.0, 10.0));
+        let ray = Ray::new(Point::new(0.0, 0.0), Point::new(1.0, 1.0));
+
+        assert!(ray.intersects(&segment));
+        assert!(segment.intersects(&ray));
+
+        let segment = Segment::new(Point::new(0.0, 10.0), Point::new(10.0, 0.0));
+        let ray = Ray::new(Point::new(0.0, 0.0), Point::new(-1.0, 1.0));
+
+        assert!(!ray.intersects(&segment));
+        assert!(!segment.intersects(&ray));
+    }
+
+    #[test]
+    fn aabb_contains_test() {
+        let point = Point::new(0.0, 0.0);
+        let shape = vec![Point::new(-1.0, -1.0), Point::new(1.0, -1.0), Point::new(0.0, 1.0)];
+        let aabb = AABB::from_points(&shape);
+
+        assert!(aabb.contains(point));
+
+        let point = Point::new(5.0, 6.3);
+        
+        assert!(!aabb.contains(point));
+    }
+
+    #[test]
+    fn aabb_intersect_test() {
+        let triangle = vec![Point::new(-3.0, 2.0), Point::new(1.0, 1.0), Point::new(-1.0, 3.0)];
+        let rect = vec![Point::new(-2.0, 1.0), Point::new(-1.0, 1.0), Point::new(-1.0, 2.0), Point::new(-2.0, 2.0)];
+        let tri_aabb = AABB::from_points(&triangle);
+        let rect_aabb = AABB::from_points(&rect);
+
+        assert!(rect_aabb.intersects(&tri_aabb));
+
+        let triangle = vec![Point::new(0.0, 2.0), Point::new(4.0, 1.0), Point::new(2.0, 3.0)];
+        let tri_aabb = AABB::from_points(&triangle);
+
+        assert!(!rect_aabb.intersects(&tri_aabb));
+    }
+
+    #[test]
+    fn aabb_union_test() {
+        let triangle = vec![Point::new(-3.0, 2.0), Point::new(1.0, 1.0), Point::new(-1.0, 3.0)];
+        let rect = vec![Point::new(-2.0, 1.0), Point::new(-1.0, 1.0), Point::new(-1.0, 2.0), Point::new(-2.0, 2.0)];
+        let tri_aabb = AABB::from_points(&triangle);
+        let rect_aabb = AABB::from_points(&rect);
+
+        let aabb = rect_aabb.union(&tri_aabb);
+
+        assert!(
+            (aabb.min.x - -3.0).abs() < EPS && 
+            (aabb.min.y - 1.0).abs() < EPS && 
+            (aabb.max.x - 1.0).abs() < EPS &&
+            (aabb.max.y - 3.0).abs() < EPS
+        );
+    }
+
+    #[test]
+    fn segment_segment_intersect_test() {
+        let s1 = Segment::new(Point::new(10.0, 0.0), Point::new(0.0, 10.0));
+        let s2 = Segment::new(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
+
+        assert!(s1.intersects(&s2));
+
+        let s2 = Segment::new(Point::new(15.0, -5.0), Point::new(5.0, 5.0));
+        assert!(s1.intersects(&s2));
+
+        let s2 = Segment::new(Point::new(-4.0, -4.0), Point::new(-6.0, -6.0));
+        assert!(!s1.intersects(&s2));
+
+        let s2 = Segment::new(Point::new(-5.0, 15.0), Point::new(-10.0, 20.0));
+        assert!(!s1.intersects(&s2));
+    }
+
+    #[test]
+    fn point_point_distance_test() {
+        let p1 = Point::new(0.0, 0.0);
+        let p2 = Point::new(3.0, 4.0);
+
+        let dist = p1.distance(&p2);
+
+        assert!((dist - 5.0).abs() < EPS);
+    }
+
+    #[test]
+    fn point_segment_distance_test() {
+        let segment = Segment::new(Point::new(10.0, 0.0), Point::new(0.0, 10.0));
+        let p1 = Point::new(0.0, 0.0);
+        let p2 = Point::new(-3.0, 14.0);
+        let p3 = Point::new(22.0, 5.0);
+
+        let d1 = p1.distance(&segment);
+        let d2 = p2.distance(&segment);
+        let d3 = p3.distance(&segment);
+
+        assert!((d1 - 7.071067812).abs() < EPS);
+        assert!((d2 - 5.0).abs() < EPS);
+        assert!((d3 - 13.0).abs() < EPS);
+    }
+
+    #[test]
+    fn segment_segment_distance_test() {
+        let s1 = Segment::new(Point::new(10.0, 0.0), Point::new(0.0, 10.0));
+        let s2 = Segment::new(Point::new(-5.0, -5.0), Point::new(0.0, 0.0));
+        let s3 = Segment::new(Point::new(10.0, -3.0), Point::new(20.0, -10.0));
+
+        let d1 = s2.distance(&s1);
+        let d2 = s3.distance(&s1);
+
+        assert!((d1 - 7.071067812).abs() < EPS);
+        assert!((d2 - 3.0).abs() < EPS);
+    }
+
+    #[test]
+    fn orientation_test() {
+        let a = Point::new(-1.0, 0.0);
+        let b = Point::new(1.0, 0.0);
+        let c = Point::new(0.0, 1.0);
+        let d = Point::new(2.0, 0.0);
+
+        assert!(orientation(a, b, c) == 2);
+        assert!(orientation(a, c, b) == 1);
+        assert!(orientation(a, b, d) == 0);
+    }
+}
