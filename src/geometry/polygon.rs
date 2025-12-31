@@ -1,4 +1,8 @@
+use core::f64;
+
 use super::*;
+
+const EPS: f64 = 1e-9;
 
 pub struct SimplePolygon {
     center: Point,
@@ -174,6 +178,42 @@ impl ConvexPolygon {
     }
 }
 
+pub struct LineEdgeIter<'a> {
+    verts: std::slice::Iter<'a, Point>,
+    prev: Option<&'a Point>,
+}
+
+impl<'a> LineEdgeIter<'a> {
+    /*
+     * Create a new LineEdgeIter with the vertices from a line.
+     * Arguments:
+     *     vertices: &'a [Point]
+     */
+    pub fn new(vertices: &'a [Point]) -> Self {
+        let mut iter = vertices.iter();
+        let prev = iter.next();
+
+        Self {
+            verts: iter,
+            prev,
+        }
+    }
+}
+
+impl<'a> Iterator for LineEdgeIter<'a> {
+    type Item = (&'a Point, &'a Point);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(curr) = self.verts.next() {
+            let edge = Some((self.prev.unwrap(), curr));
+            self.prev = Some(curr);
+            return edge;
+        }
+
+        None
+    }
+}
+
 pub struct PolygonEdgeIter<'a> {
     verts: std::slice::Iter<'a, Point>,
     first: Option<&'a Point>,
@@ -333,6 +373,37 @@ fn brute_force_intersects(a: &impl Shape2D, b: &impl Shape2D) -> bool {
 }
 
 /*
+ * Brute force algorithm for calculating distance between two generic shapes.
+ * Arguments:
+ *     a: &impl Shape2D
+ *     b: &impl Shape2D
+ * Returns:
+ *     f64 - The distance between the objects.
+ */
+fn brute_force_distance(a: &impl Shape2D, b: &impl Shape2D) -> f64 {
+    // O(n^2) brute force method. Check every edge against every other edge.
+    a.edges()
+        .map(|(&p1, &p2)| {
+            let s1 = Segment::new(p1, p2);
+            b.edges()
+                .map(|(&p3, &p4)| {
+                    let s2 = Segment::new(p3, p4);
+                    s2.distance(&s1)
+                })
+                .min_by(|a, b| {
+                    a.partial_cmp(b)
+                        .unwrap()
+                })
+                .unwrap()
+        })
+        .min_by(|a, b| {
+            a.partial_cmp(b)
+                .unwrap()  
+        })
+            .unwrap()
+}
+
+/*
  * GJK algorithm for determining intersection of two convex polygons.
  * Arguments:
  *     a: &impl Shape2D
@@ -349,7 +420,7 @@ fn gjk_intersects(a: &impl Shape2D, b: &impl Shape2D) -> bool {
     }
 
     // Build the initial simplex
-    let mut simplex: Vec<Point> = Vec::new();
+    let mut simplex: Vec<Point> = Vec::with_capacity(3);
     simplex.push(support(a, b, dir));
     dir = Point::new(-simplex[0].x, -simplex[0].y);
 
@@ -363,7 +434,7 @@ fn gjk_intersects(a: &impl Shape2D, b: &impl Shape2D) -> bool {
 
         simplex.push(p);
 
-        if handle_simplex(&mut simplex, &mut dir) {
+        if handle_simplex_intersection(&mut simplex, &mut dir) {
             return true;
         }
     }
@@ -377,13 +448,83 @@ fn gjk_intersects(a: &impl Shape2D, b: &impl Shape2D) -> bool {
  * Returns:
  *     bool - True if the simplex contains the origin, false otherwise.
  */
-fn handle_simplex(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
+fn handle_simplex_intersection(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
     match simplex.len() {
-        2 => handle_line(simplex, dir),
-        3 => handle_triangle(simplex, dir),
+        2 => handle_line_intersection(simplex, dir),
+        3 => handle_triangle_intersection(simplex, dir),
         _ => unreachable!(),
     }
 }
+
+/*
+ * Helper function for handle_simplex (line case).
+ */
+fn handle_line_intersection(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
+    let a = simplex[1];
+    let b = simplex[0];
+
+    let ab = b - a;
+
+    let ao = Point::new(-a.x, -a.y);
+
+    if ab.dot(ao) > 0.0 {
+        *dir = triple_cross(ab, ao, ab);
+    } else {
+        simplex.clear();
+        simplex.push(a);
+        *dir = ao;
+    }
+
+    false
+}
+
+/*
+ * Helper function for handle_simplex (triangle case).
+ */
+fn handle_triangle_intersection(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
+    let a = simplex[2];
+    let b = simplex[1];
+    let c = simplex[0];
+
+    let ab = b - a;
+    let ac = c - a;
+    let ao = Point::new(-a.x, -a.y);
+
+    *dir = Point::new(0.0, 0.0);
+
+    // Determine Voronoi region
+    let ab_perp = triple_cross(ac, ab, ab);
+    if ab_perp.dot(ao) > 0.0 {
+        // Origin is outside AB edge
+        simplex.remove(0); // remove C
+        *dir = ab_perp;
+        return false;
+    }
+    
+    let ac_perp = triple_cross(ab, ac, ac);
+    if ac_perp.dot(ao) > 0.0 {
+        // Origin is outside AC edge
+        simplex.remove(1); // remove B
+        *dir = ac_perp;
+        return false
+    }
+
+    true
+}
+
+/*
+ * GJK algorithm for determining the distance between two convex polygons.
+ * Arguments:
+ *     a: &impl Shape2D
+ *     b: &impl Shape2D
+ * Returns:
+ *     f64 - The distance between the objects.
+ */
+fn gjk_distance(a: &impl Shape2D, b: &impl Shape2D) -> f64 {
+    0.0
+}
+
+/* Helper function for GJK distance. */
 
 /*
  * Perform a triple cross product of three vectors.
@@ -412,50 +553,6 @@ fn support(a: &impl Shape2D, b: &impl Shape2D, dir: Point) -> Point {
     p1 - p2
 }
 
-/*
- * Helper function for handle_simplex (line case).
- */
-fn handle_line(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
-    let a = simplex[1];
-    let b = simplex[0];
-
-    let ab = b - a;
-
-    let ao = Point::new(-a.x, -a.y);
-
-    *dir = triple_cross(ab, ao, ab);
-    false
-}
-
-/*
- * Helper function for handle_simplex (triangle case).
- */
-fn handle_triangle(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
-    let a = simplex[2];
-    let b = simplex[1];
-    let c = simplex[0];
-
-    let ab = b - a;
-    let ac = c - a;
-    let ao = Point::new(-a.x, -a.y);
-
-    let ab_perp = triple_cross(ac, ab, ab);
-    if ab_perp.dot(ao) > 0.0 {
-        simplex.remove(0);
-        *dir = ab_perp;
-        return false;
-    }
-
-    let ac_perp = triple_cross(ab, ac, ac);
-    if ac_perp.dot(ao) > 0.0 {
-        simplex.remove(1);
-        *dir = ac_perp;
-        return false;
-    }
-
-    true
-}
-
 impl<T, U> Intersects<T> for U
     where 
         T: Shape2D,
@@ -471,6 +568,124 @@ impl<T, U> Intersects<T> for U
             }
             
             false
+        }
+    }
+
+impl<T> Distance<Point> for T
+    where 
+        T: Shape2D,
+    {
+        /*
+         * Calculate the distance between a Shape2D and a Point.
+         * Arguments:
+         *     other: &Point
+         * Returns:
+         *     f64 - The distance between the two objects.
+         */
+        fn distance(&self, other: &Point) -> f64 {
+            // Convex shapes are much easier for points
+            if self.is_convex() {
+                // Calculate the maximal point in the direction of the other point
+                let dir = *other - self.center().unwrap();
+                let p1 = self.support(dir).unwrap();
+                
+                // Need to check if the point is closer to a segment
+                let dir = *other - p1;
+                let p2 = self.support(dir).unwrap();
+
+                // If these two are equal, closest point is that point
+                if p1 == p2 {
+                    return p1.distance(other);
+                }
+
+                // If these two are not equal, closest point is on the segment connecting 
+                // the two
+                let s = Segment::new(p1, p2);
+                return s.distance(other);
+            }
+
+            // Brute force distance
+            self.edges()
+                .map(|(&p1, &p2)| {
+                    let s = Segment::new(p1, p2);
+                    s.distance(other)
+                })
+                .min_by(|a, b| {
+                    a.partial_cmp(b)
+                        .unwrap()
+                })
+                .unwrap()
+        }
+    }
+
+impl<T> Distance<T> for Point 
+    where 
+        T: Shape2D,
+    {
+        fn distance(&self, other: &T) -> f64 {
+            other.distance(self)
+        }
+    }
+
+impl<T> Distance<Segment> for T
+    where 
+        T: Shape2D,
+    {
+        /*
+         * Calculate the distance between a Shape and a Segment.
+         * Arguments:
+         *     other: &Segment
+         * Returns:
+         *     f64 - The distance between the two objects.
+         */
+        fn distance(&self, other: &Segment) -> f64 {
+            self.edges()
+                .map(|(&p1, &p2)| {
+                    let s = Segment::new(p1, p2);
+                    s.distance(other)
+                })
+                .min_by(|a, b| {
+                    a.partial_cmp(b)
+                        .unwrap()
+                })
+                .unwrap()
+        }
+    }
+
+impl<T> Distance<T> for Segment
+    where 
+        T: Shape2D,
+    {
+        /*
+         * Calculate the distance between a Segment and a Shape.
+         * Arguments:
+         *     other: &Shape2D
+         * Returns:
+         *     f64 - The distance between the two objects.
+         */
+        fn distance(&self, other: &T) -> f64 {
+            other.distance(self)
+        }
+    }
+
+impl<T, U> Distance<T> for U 
+    where 
+        T: Shape2D,
+        U: Shape2D,
+    {
+        /*
+         * Calculate the distance between two shapes.
+         * Arguments:
+         *     other: Shape2D
+         * Returns:
+         *     f64 - The distance between the two shapes.
+         */
+        fn distance(&self, other: &T) -> f64 {
+            if self.is_convex() && other.is_convex() {
+                return gjk_distance(self, other);
+            }
+
+            brute_force_distance(self, other)
         }
     }
 
@@ -609,7 +824,6 @@ impl Shape2D for ConvexPolygon {
         Some(support_point)
     }
 }
-
 /* Unit Tests */
 
 #[cfg(test)]
@@ -689,5 +903,23 @@ mod tests {
 
         assert!(p1.intersects(&p2));
         assert!(!p1.intersects(&p3));
+    }
+
+    #[test]
+    fn convex_polygon_distance_test() {
+        let shape1 = vec![Point::new(0.0, 0.0), Point::new(0.0, 1.0), Point::new(1.0, 1.0), Point::new(1.0, 0.0)];
+        let shape2 = vec![Point::new(4.0, 5.0), Point::new(4.0, 6.0), Point::new(5.0, 6.0), Point::new(5.0, 5.0)];
+
+        let p1 = SimplePolygon::from_points(&shape1);
+        let p2 = SimplePolygon::from_points(&shape2);
+
+        let cp1 = p1.convex_hull();
+        let cp2 = p2.convex_hull();
+
+        let dist = cp1.distance(&cp2);
+
+        dbg!(dist);
+
+        assert!((dist - 5.0).abs() < EPS);
     }
 }

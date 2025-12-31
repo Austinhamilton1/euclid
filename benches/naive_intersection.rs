@@ -52,7 +52,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     // Generate random segments for benchmarking
     let mut segments: Vec<Segment> = Vec::new();
-    for _ in 0..1000 {
+    for _ in 0..500 {
         let x1 = rng.gen_range(-100.0..=100.0);
         let y1 = rng.gen_range(-100.0..=100.0);
         let x2 = rng.gen_range(-100.0..=100.0);
@@ -89,7 +89,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     }
 
     c.bench_function(
-        "1000 Segments All Intersections",
+        "500 Segments All Intersections",
         |b| {
             b.iter(|| {
                 for i in 0..segments.len() - 1 {
