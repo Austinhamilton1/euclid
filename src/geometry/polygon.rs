@@ -48,7 +48,7 @@ impl SimplePolygon {
 
         // Recalculate the center of the points
         let mut center = Point::new(0.0, 0.0);
-        for &point in self.vertices.iter() {
+        for &point in self.vertices() {
             center = center + point;
         }
 
@@ -63,8 +63,7 @@ impl SimplePolygon {
         assert!(self.vertices.len() >= 3);
 
         // Find the pivot: lowest y, then lowest x
-        let pivot = self.vertices
-            .iter()
+        let pivot = self.vertices()
             .min_by(|a, b| {
                 a.y.partial_cmp(&b.y)
                     .unwrap()
@@ -163,7 +162,7 @@ impl ConvexPolygon {
 
         // Recalculate the center of the points
         let mut center = Point::new(0.0, 0.0);
-        for &point in self.vertices.iter() {
+        for &point in self.vertices() {
             center = center + point;
         }
 
@@ -172,6 +171,72 @@ impl ConvexPolygon {
         center = (1.0 / len) * center;
 
         self.center = center;
+    }
+}
+
+pub struct PolygonEdgeIter<'a> {
+    verts: std::slice::Iter<'a, Point>,
+    first: Option<&'a Point>,
+    prev: Option<&'a Point>,
+    done: bool,
+}
+
+impl<'a> PolygonEdgeIter<'a> {
+    /*
+     * Create a new PolygonEdgeIter with the vertices from a Polygon.
+     * Arguments:
+     *     vertices: &'a [Point]
+     */
+    pub fn new(vertices: &'a [Point]) -> Self {
+        let mut iter = vertices.iter();
+
+        let first = iter.next();
+        let prev = first;
+
+        Self {
+            verts: iter,
+            first,
+            prev,
+            done: false,
+        }
+    }
+
+    /*
+     * Generate normals for the edges.
+     * Returns:
+     *     impl Iterator<Item = Point> + 'a - An iterator of Points (normal vectors).
+     */
+    pub fn normals(self) -> impl Iterator<Item = Point> + 'a {
+        self.map(|(a, b)| {
+            let edge = *b - *a;
+            Point::new(-edge.y, edge.x)
+        })
+    }
+}
+
+impl<'a> Iterator for PolygonEdgeIter<'a> {
+    type Item = (&'a Point, &'a Point);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Normal edges
+        if let Some(curr) = self.verts.next() {
+            let edge = Some((self.prev.unwrap(), curr));
+            self.prev = Some(curr);
+            return edge;
+        }
+
+        // Closing edge (last -> first)
+        if !self.done {
+            self.done = true;
+
+            if let (Some(last), Some(first)) = (self.prev, self.first) {
+                if last as *const _ != first as *const _ {
+                    return Some((last, first));
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -203,13 +268,12 @@ impl Contains for SimplePolygon {
             let mut intersect_count = 0;
             let test_ray = Ray::new(*other, Point::new(1.0, 0.0));
 
-            for (i, &p) in self.vertices.iter().enumerate() {
-                let r = self.vertices[(i + 1) % self.vertices.len()];
+            self.edges().for_each(|(&p, &r)| {
                 let s = Segment::new(p, r);
                 if test_ray.intersects(&s) {
                     intersect_count += 1;
                 }
-            }
+            });
 
             // If the ray intersects an odd count, the point is in the Polygon,
             // otherwise its outside
@@ -228,13 +292,12 @@ impl Contains for ConvexPolygon {
         if self.aabb().contains(*other) {
             // Calculate initial orientation
             let p = self.vertices[0];
-            let mut r = self.vertices[1];
+            let r = self.vertices[1];
             let o = orientation(p, *other, r);
 
             // Ensure the orientation is the same for every edge
-            for (i, &point) in self.vertices.iter().enumerate().skip(1) {
-                r = self.vertices[(i + 1) % self.vertices.len()];
-                if orientation(point, *other, r) != o {
+            for (&p, &r) in self.edges().skip(1) {
+                if orientation(p, *other, r) != o {
                     return false;
                 }
             }
@@ -243,6 +306,66 @@ impl Contains for ConvexPolygon {
         }
         
         false
+    }
+}
+
+/*
+ * Brute force algorithm for determining intersection of two generic shapes.
+ * Arguments:
+ *     a: &impl Shape2D
+ *     b: &impl Shape2D
+ * Returns:
+ *     bool - True if the objects intersect, false otherwise.
+ */
+fn brute_force_intersects(a: &impl Shape2D, b: &impl Shape2D) -> bool {
+    // O(n^2) brute force method. Check every edge against every other edge.
+    for (&p1, &p2) in a.edges() {
+        for (&p3, &p4) in b.edges() {
+            let s1 = Segment::new(p1, p2);
+            let s2 = Segment::new(p3, p4);
+            if s1.intersects(&s2) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/*
+ * GJK algorithm for determining intersection of two convex polygons.
+ * Arguments:
+ *     a: &impl Shape2D
+ *     b: &impl Shape2D
+ * Returns:
+ *     bool - True if the objects intersect, false otherwise.
+ */
+fn gjk_intersects(a: &impl Shape2D, b: &impl Shape2D) -> bool {
+    // Initial direction should be the vector of separation between
+    // the centers of the shapes
+    let mut dir = a.center().unwrap() - b.center().unwrap();
+    if dir.x == 0.0 && dir.y == 0.0 {
+        dir = Point::new(1.0, 0.0);
+    }
+
+    // Build the initial simplex
+    let mut simplex: Vec<Point> = Vec::new();
+    simplex.push(support(a, b, dir));
+    dir = Point::new(-simplex[0].x, -simplex[0].y);
+
+    // In a loop, successively build simplexes until one is found that contains
+    // the origin (intersects) or one goes beyond the origin (does not intersect).
+    loop {
+        let p = support(a, b, dir);
+        if p.dot(dir) <= 0.0 {
+            return false;
+        }
+
+        simplex.push(p);
+
+        if handle_simplex(&mut simplex, &mut dir) {
+            return true;
+        }
     }
 }
 
@@ -283,9 +406,9 @@ fn triple_cross(a: Point, b: Point, c: Point) -> Point {
 /*
  * Helper function for calculating support functions.
  */
-fn support(a: &impl Convex, b: &impl Convex, dir: Point) -> Point {
-    let p1 = a.support(dir);
-    let p2 = b.support(Point::new(-dir.x, -dir.y));
+fn support(a: &impl Shape2D, b: &impl Shape2D, dir: Point) -> Point {
+    let p1 = a.support(dir).unwrap();
+    let p2 = b.support(Point::new(-dir.x, -dir.y)).unwrap();
     p1 - p2
 }
 
@@ -335,79 +458,128 @@ fn handle_triangle(simplex: &mut Vec<Point>, dir: &mut Point) -> bool {
 
 impl<T, U> Intersects<T> for U
     where 
-        T: Convex,
-        U: Convex,
+        T: Shape2D,
+        U: Shape2D,
     {
         fn intersects(&self, other: &T) -> bool {
-            // Initial direction should be the vector of separation between
-            // the centers of the shapes
-            let mut dir = self.center() - other.center();
-            if dir.x == 0.0 && dir.y == 0.0 {
-                dir = Point::new(1.0, 0.0);
-            }
-
-            // Build the initial simplex
-            let mut simplex: Vec<Point> = Vec::new();
-            simplex.push(support(self, other, dir));
-            dir = Point::new(-simplex[0].x, -simplex[0].y);
-
-            // In a loop, successively build simplexes until one is found that contains
-            // the origin (intersects) or one goes beyond the origin (does not intersect).
-            loop {
-                let p = support(self, other, dir);
-                if p.dot(dir) <= 0.0 {
-                    return false;
-                }
-
-                simplex.push(p);
-
-                if handle_simplex(&mut simplex, &mut dir) {
-                    return true;
+            // AABB optimization
+            if self.aabb().intersects(other) {
+                return match self.is_convex() {
+                    true => gjk_intersects(self, other),
+                    false => brute_force_intersects(self, other),
                 }
             }
+            
+            false
         }
     }
 
 impl Geometry for SimplePolygon {}
 impl Geometry for ConvexPolygon {}
 
-trait Shape2D {
-    type Iter<'a>: Iterator<Item = &'a Point>
-    where 
-        Self: 'a;
+pub trait Shape2D: Geometry {
+    type NodeIter<'a>: Iterator<Item = &'a Point>
+        where 
+            Self: 'a;
 
-    fn vertices(&self) -> Self::Iter<'_>;
+    type EdgeIter<'b>: Iterator<Item = (&'b Point, &'b Point)>
+        where 
+            Self: 'b;
+
+    fn vertices(&self) -> Self::NodeIter<'_>;
+    fn edges(&self) -> Self::EdgeIter<'_>;
+    fn is_convex(&self) -> bool;
+
+    /* These methods only apply to convex shapes */
+    fn support(&self, _dir: Point) -> Option<Point> {
+        None
+    }
+
+    fn center(&self) -> Option<Point> {
+        None
+    }
 }
 
 impl Shape2D for SimplePolygon {
-    type Iter<'a> = std::slice::Iter<'a, Point>;
+    type NodeIter<'a> = std::slice::Iter<'a, Point>
+        where
+            Self: 'a;
+    
+    type EdgeIter<'a> = PolygonEdgeIter<'a>
+        where 
+            Self: 'a;
 
-    fn vertices(&self) -> Self::Iter<'_> {
+    /*
+     * Return an iterator to this shape's vertices.
+     * Returns:
+     *     Self::NodeIter<'_> - Non-copying iterator.
+     */
+    fn vertices(&self) -> Self::NodeIter<'_> {
         self.vertices.iter()
+    }
+
+    /*
+     * Returns an iterator to this shape's edges.
+     * Returns:
+     *     PolygonEdgeIter - Non-copying iterator.
+     */
+    fn edges(&self) -> Self::EdgeIter<'_> {
+        PolygonEdgeIter::new(&self.vertices)
+    }
+
+    /*
+     * Is this shape convex?
+     * Returns:
+     *     bool
+     */
+    fn is_convex(&self) -> bool {
+        false
     }
 }
 
 impl Shape2D for ConvexPolygon {
-    type Iter<'a> = std::slice::Iter<'a, Point>;
+    type NodeIter<'a> = std::slice::Iter<'a, Point>
+        where
+            Self: 'a;
 
-    fn vertices(&self) -> Self::Iter<'_> {
+    type EdgeIter<'a> = PolygonEdgeIter<'a>
+        where 
+            Self: 'a;
+
+    /*
+     * Return an iterator to this shape's vertices.
+     * Returns:
+     *     Self::NodeIter<'_> - Non-copying iterator.
+     */
+    fn vertices(&self) -> Self::NodeIter<'_> {
         self.vertices.iter()
     }
-}
 
-trait Convex {
-    fn support(&self, dir: Point) -> Point;
-    fn center(&self) -> Point;
-}
+    /*
+     * Returns an iterator to this shape's edges.
+     * Returns:
+     *     PolygonEdgeIter - Non-copying iterator.
+     */
+    fn edges(&self) -> Self::EdgeIter<'_> {
+        PolygonEdgeIter::new(&self.vertices)
+    }
 
-impl Convex for ConvexPolygon {
+    /*
+     * Is this shape convex?
+     * Returns:
+     *     bool
+     */
+    fn is_convex(&self) -> bool {
+        true
+    }
+
     /*
      * Center function for grabbing the center of the Polygon.
      * Returns:
-     *     Point - The center of mass.
+     *     Option<Point> - The center of mass.
      */
-    fn center(&self) -> Point {
-        self.center
+    fn center(&self) -> Option<Point> {
+        Some(self.center)
     }
 
     /*
@@ -415,9 +587,9 @@ impl Convex for ConvexPolygon {
      * Arguments:
      *     dir: Point
      * Returns:
-     *     Point - The maximal point on the ConvexPolygon in the specified direction.
+     *     Option<Point> - The maximal point on the ConvexPolygon in the specified direction.
      */
-    fn support(&self, dir: Point) -> Point {
+    fn support(&self, dir: Point) -> Option<Point> {
         // Initialize the support point as the first point
         let mut support_point = self.vertices[0];
         let mut maximum_direction = support_point.dot(dir);
@@ -434,7 +606,7 @@ impl Convex for ConvexPolygon {
             maximum_direction = new_direction;
         }
 
-        support_point
+        Some(support_point)
     }
 }
 
@@ -503,5 +675,19 @@ mod tests {
 
         assert!(cp1.intersects(&cp2));
         assert!(!cp1.intersects(&cp3));
+    }
+
+    #[test]
+    fn non_convex_polygon_intersects_test() {
+        let shape1 = vec![Point::new(-2.0, 1.0), Point::new(-2.0, 2.0), Point::new(-1.0, 2.0), Point::new(-1.0, 1.0)];
+        let shape2 = vec![Point::new(1.0, 1.0), Point::new(-3.0, 2.0), Point::new(-1.0, 3.0)];
+        let shape3 = vec![Point::new(1.0, 2.0), Point::new(-3.0, 3.0), Point::new(-1.0, 4.0)];
+
+        let p1 = SimplePolygon::from_points(&shape1);
+        let p2 = SimplePolygon::from_points(&shape2);
+        let p3 = SimplePolygon::from_points(&shape3);
+
+        assert!(p1.intersects(&p2));
+        assert!(!p1.intersects(&p3));
     }
 }

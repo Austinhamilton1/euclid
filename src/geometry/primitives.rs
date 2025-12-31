@@ -266,7 +266,7 @@ impl HasAabb for Point {
      * Get the AABB of a point (trivial - done for generalization).
      */
     fn aabb(&self) -> AABB {
-        AABB::new(*self, *self)            
+        AABB::new(*self, *self)
     }
 }
 
@@ -494,6 +494,7 @@ fn on_segment(p: Point, q: Point, r: Point) -> bool {
 
 /* Geometry will be the basis for all indexed queries */
 pub trait Geometry: HasAabb {}
+
 impl Geometry for Point {}
 impl Geometry for Segment {}
 impl Geometry for AABB {}
