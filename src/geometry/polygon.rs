@@ -64,60 +64,48 @@ impl SimplePolygon {
     }
 
     pub fn convex_hull(&self) -> ConvexPolygon {
-        assert!(self.vertices.len() >= 3);
+        if self.vertices.len() < 3 {
+            return ConvexPolygon::from_points(&self.vertices);
+        }
 
-        // Find the pivot: lowest y, then lowest x
-        let pivot = self.vertices()
-            .min_by(|a, b| {
-                a.y.partial_cmp(&b.y)
+        let mut hull: Vec<Point> = Vec::new();
+
+        let (l, _) = self.vertices
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                a.x.partial_cmp(&b.x)
                     .unwrap()
-                    .then_with(|| a.x.partial_cmp(&b.x).unwrap())  
+                    .then(a.y.partial_cmp(&b.y).unwrap())  
             })
             .unwrap();
 
-        // Sort points by polar angle around pivot
-        let mut sorted: Vec<Point> = self.vertices
-            .iter()
-            .copied()
-            .filter(|p| *p != *pivot)
-            .collect();
+        let mut p = l;
+        let mut q: usize;
 
-        sorted.sort_by(|a, b| {
-            let o = orientation(*pivot, *a, *b);
+        loop {
+            hull.push(self.vertices[p]);
 
-            if o == 0 {
-                pivot.dot(*a)
-                    .partial_cmp(&pivot.dot(*b))
-                    .unwrap()
-            } else if o > 0 {
-                std::cmp::Ordering::Less
-            } else {
-                std::cmp::Ordering::Greater
-            }
-        });
+            q = (p + 1) % self.vertices.len();
 
-        // Build hull using a stack
-        let mut hull: Vec<Point> = Vec::new();
-        hull.push(*pivot);
-        hull.push(sorted[0]);
-
-        for &p in sorted.iter().skip(1) {
-            while hull.len() >= 2 {
-                let q = hull[hull.len() - 1];
-                let r = hull[hull.len() - 2];
-
-                if orientation(r, q, p) == 1 {
-                    break;
+            for i in 0..self.vertices.len() {
+                if orientation(self.vertices[p], self.vertices[i], self.vertices[q]) == 2 {
+                    q = i;
                 }
-                hull.pop();
             }
-            hull.push(p);
+
+            p = q;
+
+            if p == l {
+                break;
+            }
         }
 
         ConvexPolygon::from_points(&hull)
     }
 }
 
+#[derive(Debug)]
 pub struct ConvexPolygon {
     center: Point,
     vertices: Vec<Point>,
@@ -171,9 +159,7 @@ impl ConvexPolygon {
         }
 
         let len = self.vertices.len() as f64;
-
         center = (1.0 / len) * center;
-
         self.center = center;
     }
 }
@@ -513,20 +499,6 @@ fn handle_triangle_intersection(simplex: &mut Vec<Point>, dir: &mut Point) -> bo
 }
 
 /*
- * GJK algorithm for determining the distance between two convex polygons.
- * Arguments:
- *     a: &impl Shape2D
- *     b: &impl Shape2D
- * Returns:
- *     f64 - The distance between the objects.
- */
-fn gjk_distance(a: &impl Shape2D, b: &impl Shape2D) -> f64 {
-    0.0
-}
-
-/* Helper function for GJK distance. */
-
-/*
  * Perform a triple cross product of three vectors.
  * Arguments:
  *     a: Point,
@@ -682,7 +654,31 @@ impl<T, U> Distance<T> for U
          */
         fn distance(&self, other: &T) -> f64 {
             if self.is_convex() && other.is_convex() {
-                return gjk_distance(self, other);
+                let ab = other.center().unwrap() - self.center().unwrap();
+                let ba = Point::new(-ab.x, -ab.y);
+
+                let a1 = self.support(ab).unwrap();
+                let b1 = other.support(ba).unwrap();
+
+                let ab = b1 - a1;
+                let ba = a1 - b1;
+
+                let a2 = self.support(ab).unwrap();
+                let b2 = other.support(ba).unwrap();
+
+                if a2 != a1 && b2 != b1 {
+                    let s1 = Segment::new(a1, a2);
+                    let s2 = Segment::new(b1, b2);
+                    return s1.distance(&s2);
+                } else if a2 != a1 {
+                    let s = Segment::new(a1, a2);
+                    return s.distance(&b1);
+                } else if b2 != b1 {
+                    let s = Segment::new(b1, b2);
+                    return s.distance(&a1);
+                } else {
+                    return a1.distance(&b1);
+                }
             }
 
             brute_force_distance(self, other)
@@ -691,7 +687,6 @@ impl<T, U> Distance<T> for U
 
 impl Geometry for SimplePolygon {}
 impl Geometry for ConvexPolygon {}
-
 pub trait Shape2D: Geometry {
     type NodeIter<'a>: Iterator<Item = &'a Point>
         where 
@@ -805,20 +800,36 @@ impl Shape2D for ConvexPolygon {
      *     Option<Point> - The maximal point on the ConvexPolygon in the specified direction.
      */
     fn support(&self, dir: Point) -> Option<Point> {
-        // Initialize the support point as the first point
-        let mut support_point = self.vertices[0];
-        let mut maximum_direction = support_point.dot(dir);
+        // This is a log(n) solution that uses a binary search
+        let mut l: usize = 0;
+        let mut h: usize = self.vertices.len() - 1;
 
-        for &point in self.vertices.iter().skip(1) {
-            // Since the vertices are ordered and convex, they are monotonically increasing
-            // The first decrease means the maximal point has been found
-            let new_direction = point.dot(dir);
-            if new_direction < maximum_direction {
+        let mut support_point = self.vertices[0];
+
+        while l <= h {
+            let m = (l + h) / 2;
+            let point = self.vertices[m];
+
+            let left = if m > 0 && m - 1 > l { m - 1 } else { l };
+            let right = if m + 1 < h { m + 1 } else { h };
+
+            let left_neighbor = self.vertices[left];
+            let right_neighbor = self.vertices[right];
+
+            // Since the vertices are ordered in clockwise order,
+            // binary search works with the dot product
+            let left_dot = left_neighbor.dot(dir);
+            let right_dot = right_neighbor.dot(dir);
+            let mid_dot = point.dot(dir);
+
+            if left_dot > mid_dot {
+                h = m - 1;
+            } else if right_dot > mid_dot {
+                l = m + 1;
+            } else {
+                support_point = point;
                 break;
             }
-
-            support_point = point;
-            maximum_direction = new_direction;
         }
 
         Some(support_point)
@@ -834,7 +845,7 @@ mod tests {
 
     #[test]
     fn convex_hull_test() {
-        let points = vec![Point::new(0.0, 0.0), Point::new(2.0, 0.0), Point::new(1.0, 1.0), Point::new(0.0, 2.0)];
+        let points = vec![Point::new(0.0, 0.0), Point::new(2.0, 0.0), Point::new(1.0, 1.0), Point::new(2.0, 2.0), Point::new(0.0, 2.0)];
         let sp = SimplePolygon::from_points(&points);
         let cp = sp.convex_hull();
 
@@ -843,10 +854,12 @@ mod tests {
         let p1 = iter.next().unwrap();
         let p2 = iter.next().unwrap();
         let p3 = iter.next().unwrap();
+        let p4 = iter.next().unwrap();
 
         assert!((p1.x - 0.0).abs() < EPS && (p1.y - 0.0).abs() < EPS);
-        assert!((p2.x - 0.0).abs() < EPS && (p2.y - 2.0).abs() < EPS);
-        assert!((p3.x - 2.0).abs() < EPS && (p3.y - 0.0).abs() < EPS);
+        assert!((p2.x - 2.0).abs() < EPS && (p2.y - 0.0).abs() < EPS);
+        assert!((p3.x - 2.0).abs() < EPS && (p3.y - 2.0).abs() < EPS);
+        assert!((p4.x - 0.0).abs() < EPS && (p4.y - 2.0).abs() < EPS);
     }
 
     #[test]
@@ -915,6 +928,8 @@ mod tests {
 
         let cp1 = p1.convex_hull();
         let cp2 = p2.convex_hull();
+
+        dbg!(&cp1);
 
         let dist = cp1.distance(&cp2);
 
