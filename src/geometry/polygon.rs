@@ -800,15 +800,39 @@ impl Shape2D for ConvexPolygon {
      *     Option<Point> - The maximal point on the ConvexPolygon in the specified direction.
      */
     fn support(&self, dir: Point) -> Option<Point> {
-        Some(
-            self.vertices()
-                .copied()
-                .max_by(|a, b| {
-                    a.dot(dir).partial_cmp(&b.dot(dir))
-                        .unwrap()
-                })
-                .unwrap()
-        )
+        // This is a log(n) solution that uses a binary search
+        let mut l: usize = 0;
+        let mut h: usize = self.vertices.len() - 1;
+
+        let mut support_point = self.vertices[0];
+
+        while l <= h {
+            let m = (l + h) / 2;
+            let point = self.vertices[m];
+
+            let left = if m > 0 && m - 1 > l { m - 1 } else { l };
+            let right = if m + 1 < h { m + 1 } else { h };
+
+            let left_neighbor = self.vertices[left];
+            let right_neighbor = self.vertices[right];
+
+            // Since the vertices are ordered in clockwise order,
+            // binary search works with the dot product
+            let left_dot = left_neighbor.dot(dir);
+            let right_dot = right_neighbor.dot(dir);
+            let mid_dot = point.dot(dir);
+
+            if left_dot > mid_dot {
+                h = m - 1;
+            } else if right_dot > mid_dot {
+                l = m + 1;
+            } else {
+                support_point = point;
+                break;
+            }
+        }
+
+        Some(support_point)
     }
 }
 /* Unit Tests */
