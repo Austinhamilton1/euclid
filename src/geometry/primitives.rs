@@ -43,6 +43,18 @@ impl Point {
     }
 }
 
+impl std::ops::Index<usize> for Point {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if index != 0 && index != 1 {
+            panic!("Index {index} out of range for Point");
+        }
+
+        if index == 0 { &self.x } else { &self.y }
+    }
+}
+
 impl std::ops::Add<Point> for Point {
     type Output = Point;
 
@@ -132,8 +144,9 @@ impl Ray {
  */
 #[derive(Debug, Clone, Copy)]
     pub struct AABB {
-    min: Point,
-    max: Point,
+    pub min: Point,
+    pub max: Point,
+    pub centroid: Point,
 }
 
 impl AABB {
@@ -144,7 +157,12 @@ impl AABB {
      *     max: Point
      */
     pub fn new(min: Point, max: Point) -> Self {
-        Self { min, max }
+        let centroid = Point {
+            x: (min.x + max.x) / 2.0,
+            y: (min.y + max.y) / 2.0,
+        };
+
+        Self { min, max, centroid }
     }
 
     /*
@@ -159,9 +177,15 @@ impl AABB {
         let max_x = if a.x > b.x { a.x } else { b.x };
         let max_y = if a.y > b.y { a.y } else { b.y };
 
+        let centroid = Point {
+            x: (min_x + max_x) / 2.0,
+            y: (min_y + max_y) / 2.0,
+        };
+
         Self {
             min: Point::new(min_x, min_y),
             max: Point::new(max_x, max_y),
+            centroid,
         }
     }
 
@@ -198,9 +222,15 @@ impl AABB {
             }
         }
 
+        let centroid = Point {
+            x: (min_x + max_x) / 2.0,
+            y: (min_y + max_y) / 2.0,
+        };
+
         Self {
             min: Point::new(min_x, min_y),
             max: Point::new(max_x, max_y),
+            centroid,
         }
     }
 
@@ -250,9 +280,15 @@ impl AABB {
         let max_x = if self.max.x > other.max.x { self.max.x } else { other.max.x };
         let max_y = if self.max.y > other.max.y { self.max.y } else { other.max.y };
 
+        let centroid = Point {
+            x: (min_x + max_x) / 2.0,
+            y: (min_y + max_y) / 2.0,
+        };
+
         Self {
             min: Point::new(min_x, min_y),
             max: Point::new(max_x, max_y),
+            centroid,
         }
     }
 }

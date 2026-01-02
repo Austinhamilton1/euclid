@@ -2,8 +2,7 @@ use core::f64;
 
 use super::*;
 
-const EPS: f64 = 1e-9;
-
+#[derive(Debug, Clone)]
 pub struct SimplePolygon {
     center: Point,
     vertices: Vec<Point>,
@@ -105,7 +104,7 @@ impl SimplePolygon {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConvexPolygon {
     center: Point,
     vertices: Vec<Point>,
@@ -525,6 +524,33 @@ fn support(a: &impl Shape2D, b: &impl Shape2D, dir: Point) -> Point {
     p1 - p2
 }
 
+impl<T> Intersects<Segment> for T
+    where 
+        T: Shape2D
+    {
+        fn intersects(&self, other: &Segment) -> bool {
+            if self.aabb().intersects(other) {
+                for (&p1, &p2) in self.edges() {
+                    let s = Segment::new(p1, p2);
+                    if s.intersects(other) {
+                        return true;
+                    }
+                }
+            }
+
+            false
+        }
+    }
+
+impl<T> Intersects<T> for Segment
+    where 
+        T: Shape2D
+    {
+        fn intersects(&self, other: &T) -> bool {
+            other.intersects(self)
+        }
+    }
+
 impl<T, U> Intersects<T> for U
     where 
         T: Shape2D,
@@ -533,7 +559,7 @@ impl<T, U> Intersects<T> for U
         fn intersects(&self, other: &T) -> bool {
             // AABB optimization
             if self.aabb().intersects(other) {
-                return match self.is_convex() {
+                return match self.is_convex() && other.is_convex() {
                     true => gjk_intersects(self, other),
                     false => brute_force_intersects(self, other),
                 }
