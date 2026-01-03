@@ -291,6 +291,16 @@ impl AABB {
             centroid,
         }
     }
+
+    /*
+     * Return the diameter of the AABB (diagonal diameter).
+     * Returns:
+     *     f64 - The diameter of the bounding box.
+     */
+    pub fn diameter(&self) -> f64 {
+        let diagonal = self.max - self.min;
+        diagonal.dot(diagonal).sqrt()
+    }
 }
 
 pub trait HasAabb {

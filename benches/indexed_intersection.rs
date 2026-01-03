@@ -106,9 +106,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         convex_polygon_geometries.push(Geometry2D::ConvexPolygon(&convex_polygons[i]));
     }
 
-    let mut segment_shm = SpatialHashMap::new(Point::new(25.0, 25.0));
-    let mut simple_polygon_shm = SpatialHashMap::new(Point::new(25.0, 25.0));
-    let mut convex_polygon_shm = SpatialHashMap::new(Point::new(25.0, 25.0));
+    let mut segment_shm = SpatialHashMap::new(SpatialHashMap::minimal_aabb(&segment_geometries), SpatialHashMap::optimal_cell_size(&segment_geometries));
+    let mut simple_polygon_shm = SpatialHashMap::new(SpatialHashMap::minimal_aabb(&simple_polygon_geometries), SpatialHashMap::optimal_cell_size(&simple_polygon_geometries));
+    let mut convex_polygon_shm = SpatialHashMap::new(SpatialHashMap::minimal_aabb(&convex_polygon_geometries), SpatialHashMap::optimal_cell_size(&convex_polygon_geometries));
 
     for i in 0..segment_geometries.len() {
         segment_shm.insert(&segment_geometries[i]);
@@ -127,13 +127,12 @@ fn criterion_benchmark(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 for i in 0..segment_geometries.len() {
-                    if let Some(candidates) = segment_shm.query(&segment_geometries[i]) {
-                        for candidate in candidates {
-                            match (&segment_geometries[i], candidate) {
-                                (Geometry2D::Segment(a), Geometry2D::Segment(b)) => a.intersects(*b),
-                                _ => unreachable!(),
-                            };
-                        }
+                    let candidates = segment_shm.query(&segment_geometries[i]);
+                    for candidate in candidates {
+                        match (&segment_geometries[i], candidate) {
+                            (Geometry2D::Segment(a), Geometry2D::Segment(b)) => a.intersects(*b),
+                            _ => unreachable!(),
+                        };
                     }
                 }
             });
@@ -145,13 +144,12 @@ fn criterion_benchmark(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 for i in 0..simple_polygon_geometries.len() {
-                    if let Some(candidates) = simple_polygon_shm.query(&simple_polygon_geometries[i]) {
-                        for candidate in candidates {
-                            match (&simple_polygon_geometries[i], candidate) {
-                                (Geometry2D::SimplePolygon(a), Geometry2D::SimplePolygon(b)) => a.intersects(*b),
-                                _ => unreachable!(),
-                            };
-                        }
+                    let candidates = simple_polygon_shm.query(&simple_polygon_geometries[i]);
+                    for candidate in candidates {
+                        match (&simple_polygon_geometries[i], candidate) {
+                            (Geometry2D::SimplePolygon(a), Geometry2D::SimplePolygon(b)) => a.intersects(*b),
+                            _ => unreachable!(),
+                        };
                     }
                 }
             });
@@ -163,13 +161,12 @@ fn criterion_benchmark(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 for i in 0..convex_polygon_geometries.len() {
-                    if let Some(candidates) = convex_polygon_shm.query(&convex_polygon_geometries[i]) {
-                        for candidate in candidates {
-                            match (&convex_polygon_geometries[i], candidate) {
-                                (Geometry2D::ConvexPolygon(a), Geometry2D::ConvexPolygon(b)) => a.intersects(*b),
-                                _ => unreachable!(),
-                            };
-                        }
+                    let candidates = convex_polygon_shm.query(&convex_polygon_geometries[i]);
+                    for candidate in candidates {
+                        match (&convex_polygon_geometries[i], candidate) {
+                            (Geometry2D::ConvexPolygon(a), Geometry2D::ConvexPolygon(b)) => a.intersects(*b),
+                            _ => unreachable!(),
+                        };
                     }
                 }
             });
