@@ -13,3 +13,7 @@ criterion = "0.4"
 [[bench]]
 name = "naive_intersection"
 harness = false
+
+[[bench]]
+name = "indexed_intersection"
+harness = false
